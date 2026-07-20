@@ -1,2 +1,4 @@
 vendor/**
 subfolder/vendor/**
+.env
+subfolder/pictures/**

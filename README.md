@@ -10,6 +10,18 @@ picture data.
 It does not depend on files outside the folder, and its links detect the
 installed URL base at runtime.
 
+To deploy the package over SFTP, fill in the local, git-ignored `.env` file and
+run:
+
+```sh
+./deploy.sh
+```
+
+`SFTP_REMOTE_PATH` must be an existing directory. The script uploads the
+contents of `subfolder/`, including `.htaccess`, into that directory. The SFTP
+client prompts for the account password when key authentication does not
+succeed.
+
 Composer is local development tooling only. Install the root development
 dependencies from the repository root:
 
