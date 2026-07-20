@@ -50,6 +50,57 @@ final class ApplicationTest extends TestCase
         self::assertStringNotContainsString('<script title="quoted">', $response->body);
     }
 
+    public function testPictureRouteRendersOrderedCatalogNavigationAndBrowserAssets(): void
+    {
+        $this->writeEntry('10', 'picture.jpg', self::validJpeg(), 'ten');
+        $this->writeEntry('2', 'picture.png', self::validPng(), 'two');
+        $this->writeEntry('alpha', 'picture.png', self::validPng(), 'alpha');
+
+        $response = $this->application->handle(new Request('GET', '/picture/2'));
+
+        self::assertSame(200, $response->statusCode);
+        self::assertStringContainsString('href="/assets/picture-browser.css"', $response->body);
+        self::assertStringContainsString('src="/assets/picture-browser.js" defer', $response->body);
+        self::assertStringContainsString(
+            '<img class="picture-image" data-picture-image src="/media/2"',
+            $response->body,
+        );
+        self::assertStringContainsString('loading="lazy"', $response->body);
+        self::assertStringContainsString('data-zoom-level="1.0"', $response->body);
+        self::assertStringNotContainsString('<form', $response->body);
+        self::assertStringNotContainsString('upload', $response->body);
+        self::assertStringNotContainsString('search', $response->body);
+
+        $ids = ['2', '10', 'alpha', 'safe_1'];
+        $positions = [];
+        foreach ($ids as $id) {
+            self::assertSame(1, substr_count($response->body, 'data-picture-id="' . $id . '"'));
+            $positions[] = strpos($response->body, 'data-picture-id="' . $id . '"');
+        }
+
+        foreach ($positions as $index => $position) {
+            self::assertNotFalse($position);
+            if ($index > 0) {
+                self::assertTrue($positions[$index - 1] < $position);
+            }
+        }
+
+        self::assertStringContainsString('aria-current="page"', $response->body);
+    }
+
+    public function testBrowserZoomAssetDeclaresBoundedSteppedZoom(): void
+    {
+        $asset = file_get_contents(dirname(__DIR__, 2) . '/public/assets/picture-browser.js');
+
+        self::assertNotFalse($asset);
+        self::assertStringContainsString('const MIN_ZOOM = 0.5;', $asset);
+        self::assertStringContainsString('const MAX_ZOOM = 3.0;', $asset);
+        self::assertStringContainsString('const ZOOM_STEP = 0.25;', $asset);
+        self::assertStringContainsString('const DEFAULT_ZOOM = 1.0;', $asset);
+        self::assertStringContainsString('Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))', $asset);
+        self::assertStringContainsString('zoom + change', $asset);
+    }
+
     public function testPngMediaRouteReturnsOriginalBytesAndMimeType(): void
     {
         $bytes = self::validPng();

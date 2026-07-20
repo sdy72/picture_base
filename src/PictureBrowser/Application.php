@@ -43,7 +43,7 @@ final class Application
         return new Response(
             200,
             ['Content-Type' => 'text/html; charset=UTF-8'],
-            $this->renderer->render($entry),
+            $this->renderer->render($entry, $this->catalog->entries()),
         );
     }
 
