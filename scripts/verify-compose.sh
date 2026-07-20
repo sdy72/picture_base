@@ -7,6 +7,8 @@ export LC_ALL=C.UTF-8
 PROJECT="picture-browser-p4-$$"
 PORT=8080
 REPOSITORY_ROOT="$(pwd)"
+REPOSITORY_PICTURES_ROOT="$REPOSITORY_ROOT/subfolder/pictures"
+PACKAGE_ROOT="$REPOSITORY_ROOT/subfolder"
 FIXTURE_ROOT=''
 OUTSIDE_ROOT=''
 WORK_ROOT=''
@@ -60,6 +62,18 @@ require_command tar
 
 docker compose version >/dev/null 2>&1 || fail 'docker compose is unavailable'
 docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
+
+[[ -f "$PACKAGE_ROOT/index.php" && -f "$PACKAGE_ROOT/.htaccess" ]] \
+    || fail 'FTP package front controller or Apache rules are missing'
+[[ -f "$PACKAGE_ROOT/vendor/autoload.php" ]] \
+    || fail 'FTP package production Composer autoloader is missing'
+[[ -d "$REPOSITORY_PICTURES_ROOT" ]] \
+    || fail 'FTP package picture directory is missing'
+
+PACKAGE_HTACCESS_CONTENTS="$(<"$PACKAGE_ROOT/.htaccess")"
+[[ "$PACKAGE_HTACCESS_CONTENTS" == *'RewriteRule ^ index.php [END]'* \
+    && "$PACKAGE_HTACCESS_CONTENTS" == *'RewriteRule ^(?:src|vendor|pictures)(?:/|$) - [F,END]'* ]] \
+    || fail 'FTP package Apache rules do not route and protect the package'
 
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/picture-browser-p4-fixture.XXXXXX")"
 OUTSIDE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/picture-browser-p4-outside.XXXXXX")"
@@ -150,13 +164,13 @@ APACHE_CONTENTS="$(<docker/apache-vhost.conf)"
     || fail 'Apache vhost-level ServerName is missing'
 
 DEFAULT_CONFIG_OUTPUT="$(env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" config)"
-[[ "$DEFAULT_CONFIG_OUTPUT" == *"source: $REPOSITORY_ROOT/pictures"* ]] \
+[[ "$DEFAULT_CONFIG_OUTPUT" == *"source: $REPOSITORY_PICTURES_ROOT"* ]] \
     || fail 'unset PICTURES_HOST_PATH does not resolve to the repository pictures folder'
 [[ "$DEFAULT_CONFIG_OUTPUT" == *'target: /pictures'* && "$DEFAULT_CONFIG_OUTPUT" == *'read_only: true'* ]] \
     || fail 'unset PICTURES_HOST_PATH does not preserve the read-only /pictures mount'
 
 EMPTY_CONFIG_OUTPUT="$(PICTURES_HOST_PATH= docker compose -p "$PROJECT" config)"
-[[ "$EMPTY_CONFIG_OUTPUT" == *"source: $REPOSITORY_ROOT/pictures"* ]] \
+[[ "$EMPTY_CONFIG_OUTPUT" == *"source: $REPOSITORY_PICTURES_ROOT"* ]] \
     || fail 'empty PICTURES_HOST_PATH does not resolve to the repository pictures folder'
 [[ "$EMPTY_CONFIG_OUTPUT" == *'target: /pictures'* && "$EMPTY_CONFIG_OUTPUT" == *'read_only: true'* ]] \
     || fail 'empty PICTURES_HOST_PATH does not preserve the read-only /pictures mount'
@@ -180,8 +194,8 @@ while IFS= read -r line; do
 done < "$BUILD_LOG"
 
 printf 'Starting the default local picture fixture...\n'
-env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" up -d picture-browser
 COMPOSE_STARTED=true
+env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" up -d picture-browser
 
 DEFAULT_CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q picture-browser)"
 [[ -n "$DEFAULT_CONTAINER_ID" ]] || fail 'Compose did not create the default picture-browser container'
@@ -214,7 +228,7 @@ DEFAULT_MEDIA_METADATA="$(curl --silent --show-error --path-as-is --output "$DEF
 IFS=$'\t' read -r DEFAULT_MEDIA_STATUS DEFAULT_MEDIA_TYPE <<< "$DEFAULT_MEDIA_METADATA"
 [[ "$DEFAULT_MEDIA_STATUS" == '200' && "$DEFAULT_MEDIA_TYPE" == 'image/png' ]] \
     || fail 'default /media/example did not return HTTP 200 PNG'
-cmp -s "$DEFAULT_MEDIA" "$REPOSITORY_ROOT/pictures/example/picture.png" \
+cmp -s "$DEFAULT_MEDIA" "$REPOSITORY_PICTURES_ROOT/example/picture.png" \
     || fail 'default /media/example did not preserve the fixture bytes'
 
 DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.RW}}{{end}}{{end}}'
@@ -223,7 +237,7 @@ DEFAULT_MOUNT_RW="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_CO
 
 DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.Source}}{{end}}{{end}}'
 DEFAULT_MOUNT_SOURCE="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_CONTAINER_ID")"
-[[ "$DEFAULT_MOUNT_SOURCE" == "$REPOSITORY_ROOT/pictures" ]] \
+[[ "$DEFAULT_MOUNT_SOURCE" == "$REPOSITORY_PICTURES_ROOT" ]] \
     || fail "unexpected default /pictures source: $DEFAULT_MOUNT_SOURCE"
 
 DEFAULT_APACHE_LOGS="$(docker compose -p "$PROJECT" logs --no-color picture-browser)"
@@ -233,8 +247,8 @@ docker compose -p "$PROJECT" down --volumes --remove-orphans
 COMPOSE_STARTED=false
 
 printf 'Starting the Compose service...\n'
-docker compose -p "$PROJECT" up -d picture-browser
 COMPOSE_STARTED=true
+docker compose -p "$PROJECT" up -d picture-browser
 
 CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q picture-browser)"
 [[ -n "$CONTAINER_ID" ]] || fail 'Compose did not create the picture-browser container'

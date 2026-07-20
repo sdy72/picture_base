@@ -11,12 +11,17 @@ final class Router
     /** @return array{type: 'home'}|array{type: 'picture'|'media', id: string}|null */
     public function match(Request $request): ?array
     {
-        if ($request->path === '/') {
+        $path = $request->applicationPath();
+        if ($path === null) {
+            return null;
+        }
+
+        if ($path === '/') {
             return ['type' => 'home'];
         }
 
         $matches = [];
-        if (preg_match('/\A\/(picture|media)\/([^\/]+)\z/', $request->path, $matches) !== 1) {
+        if (preg_match('/\A\/(picture|media)\/([^\/]+)\z/', $path, $matches) !== 1) {
             return null;
         }
 

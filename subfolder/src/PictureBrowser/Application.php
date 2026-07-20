@@ -29,13 +29,13 @@ final class Application
         }
 
         return match ($route['type']) {
-            'home' => $this->homeResponse(),
-            'picture' => $this->pictureResponse($route['id']),
+            'home' => $this->homeResponse($request->basePath),
+            'picture' => $this->pictureResponse($route['id'], $request->basePath),
             'media' => $this->mediaResponse($route['id']),
         };
     }
 
-    private function homeResponse(): Response
+    private function homeResponse(string $basePath): Response
     {
         $entries = $this->catalog->entries();
         $entry = $entries[0] ?? null;
@@ -43,26 +43,26 @@ final class Application
             return Response::notFound();
         }
 
-        return $this->renderPicture($entry, $entries);
+        return $this->renderPicture($entry, $entries, $basePath);
     }
 
-    private function pictureResponse(string $id): Response
+    private function pictureResponse(string $id, string $basePath): Response
     {
         $entry = $this->catalog->find($id);
         if ($entry === null) {
             return Response::notFound();
         }
 
-        return $this->renderPicture($entry, $this->catalog->entries());
+        return $this->renderPicture($entry, $this->catalog->entries(), $basePath);
     }
 
     /** @param list<PictureEntry> $entries */
-    private function renderPicture(PictureEntry $entry, array $entries): Response
+    private function renderPicture(PictureEntry $entry, array $entries, string $basePath): Response
     {
         return new Response(
             200,
             ['Content-Type' => 'text/html; charset=UTF-8'],
-            $this->renderer->render($entry, $entries),
+            $this->renderer->render($entry, $entries, $basePath),
         );
     }
 

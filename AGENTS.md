@@ -2,9 +2,9 @@
 
 ## Repository Shape
 
-- This is a framework-free PHP application. `public/index.php` is the front controller; Apache serves existing files under `public/` and rewrites application routes to it via `docker/apache-vhost.conf`.
-- Runtime code is PSR-4 mapped from `PictureBrowser\` to `src/PictureBrowser/`; tests are under `tests/PictureBrowser/` and use the same Composer autoloader.
-- `PictureCatalog` reads `PICTURES_ROOT`. Compose maps `${PICTURES_HOST_PATH:-./pictures}` to `/pictures` and makes that mount read-only; do not hard-code a host path or treat the picture tree as writable.
+- This is a framework-free PHP application. `subfolder/` is the self-contained FTP package and its `index.php` is the front controller; Apache serves existing files and rewrites application routes to it via `.htaccess` or `docker/apache-vhost.conf`.
+- Runtime code is PSR-4 mapped from `PictureBrowser\` to `subfolder/src/PictureBrowser/` in the root development Composer config and to `src/PictureBrowser/` inside the package; tests remain under `tests/PictureBrowser/` and use the root Composer autoloader.
+- `PictureCatalog` reads `PICTURES_ROOT`. Compose maps `${PICTURES_HOST_PATH:-./subfolder/pictures}` to `/pictures` and makes that mount read-only; do not hard-code a host path or treat the picture tree as writable.
 - The stable application routes are `/`, `/picture/<id>`, and `/media/<id>`. The application is intentionally read-only; uploads, editing, and search are out of scope.
 - A picture entry must be an immediate child directory whose ID matches `[A-Za-z0-9_-]+` and is at most 128 characters, contains exactly one valid lowercase `picture.jpg` or `picture.png`, and contains UTF-8 `text.txt`. Invalid, ambiguous, traversal, and symlink entries are skipped. Numeric IDs sort numerically before other IDs, which sort lexically.
 - `PLAN.md` contains stale phase/status claims (including that Compose is absent); use the current source, `README.md`, `composer.json`, `Dockerfile`, `compose.yaml`, and `scripts/verify-compose.sh` as the operational sources of truth.

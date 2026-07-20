@@ -7,8 +7,8 @@ WORKDIR /var/www/html
 ENV PICTURES_ROOT=/pictures
 
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
-COPY composer.json composer.lock ./
-COPY src/ src/
+COPY subfolder/composer.json subfolder/composer.lock ./
+COPY subfolder/src/ src/
 
 RUN composer install \
         --no-dev \
@@ -17,7 +17,9 @@ RUN composer install \
         --prefer-dist \
         --classmap-authoritative
 
-COPY public/ public/
+COPY subfolder/index.php subfolder/.htaccess ./
+COPY subfolder/assets/ assets/
+COPY subfolder/pictures/ pictures/
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 
 RUN a2enmod rewrite \

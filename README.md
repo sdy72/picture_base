@@ -1,5 +1,25 @@
 # picture_base
 
+## FTP deployment package
+
+`subfolder/` is the complete production package. Copy that folder as-is to
+`./public/subfolder` on the FTP server; Apache must provide PHP 8.3+ and allow
+`.htaccess` overrides with `mod_rewrite` enabled. The package includes its
+front controller, assets, source, Composer metadata, and bundled picture data.
+It does not depend on files outside the folder, and its links detect the
+installed URL base at runtime.
+
+The package includes its production Composer autoloader. To regenerate it before
+uploading, run from the repository root:
+
+```sh
+composer install --working-dir=subfolder --no-dev --no-interaction --no-progress --prefer-dist --classmap-authoritative
+```
+
+The package's `.htaccess` disables indexes, routes application paths to
+`index.php`, and denies direct access to source, dependencies, picture data,
+dotfiles, and Composer metadata.
+
 ## Runtime prerequisites
 
 - Docker Engine with the `docker compose` plugin
@@ -11,7 +31,8 @@ autoload files.
 
 ## Picture folder contract
 
-By default, Compose mounts the repository-relative `./pictures` folder. To use
+By default, Compose mounts the repository-relative `./subfolder/pictures`
+folder. To use
 another existing folder, set `PICTURES_HOST_PATH` to its path. Each immediate
 child directory is an ID matching `[A-Za-z0-9_-]+` and at most 128 characters:
 
@@ -47,7 +68,7 @@ application is read-only: do not expect uploads, editing, or search functionalit
 ## Verification and teardown
 
 The verification script creates temporary external fixtures (including invalid
-and symlink cases), checks the default `./pictures` fixture and sample routes,
+and symlink cases), checks the default `./subfolder/pictures` fixture and sample routes,
 then builds the pinned image, starts Compose with an explicit fixture, checks
 the localhost binding and read-only mount, exercises the HTTP routes/media/assets,
 and removes its containers and temporary fixtures on exit:

@@ -11,12 +11,7 @@
     },
     "autoload": {
         "psr-4": {
-            "PictureBrowser\\": "subfolder/src/PictureBrowser/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "PictureBrowser\\Tests\\": "tests/PictureBrowser/"
+            "PictureBrowser\\": "src/PictureBrowser/"
         }
     },
     "scripts": {

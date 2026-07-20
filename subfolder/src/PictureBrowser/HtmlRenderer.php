@@ -9,12 +9,14 @@ final class HtmlRenderer
     /**
      * @param list<PictureEntry> $entries
      */
-    public function render(PictureEntry $entry, array $entries): string
+    public function render(PictureEntry $entry, array $entries, string $basePath = ''): string
     {
         $id = $this->escape($entry->id);
-        $mediaUrl = $this->escape('/media/' . $entry->id);
+        $mediaUrl = $this->escape($this->url($basePath, '/media/' . $entry->id));
+        $stylesheetUrl = $this->escape($this->url($basePath, '/assets/picture-browser.css'));
+        $scriptUrl = $this->escape($this->url($basePath, '/assets/picture-browser.js'));
         $text = $this->renderText($entry->text);
-        $navigation = $this->renderNavigation($entries, $entry->id);
+        $navigation = $this->renderNavigation($entries, $entry->id, $basePath);
 
         return <<<HTML
 <!doctype html>
@@ -23,8 +25,8 @@ final class HtmlRenderer
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Picture {$id}</title>
-<link rel="stylesheet" href="/assets/picture-browser.css">
-<script src="/assets/picture-browser.js" defer></script>
+<link rel="stylesheet" href="{$stylesheetUrl}">
+<script src="{$scriptUrl}" defer></script>
 </head>
 <body>
 <main class="picture-browser" data-current-picture-id="{$id}">
@@ -58,20 +60,20 @@ HTML;
     /**
      * @param list<PictureEntry> $entries
      */
-    private function renderNavigation(array $entries, string $currentId): string
+    private function renderNavigation(array $entries, string $currentId, string $basePath): string
     {
         $items = [];
         foreach ($entries as $entry) {
-            $items[] = $this->renderNavigationItem($entry, $currentId);
+            $items[] = $this->renderNavigationItem($entry, $currentId, $basePath);
         }
 
         return implode("\n", $items);
     }
 
-    private function renderNavigationItem(PictureEntry $entry, string $currentId): string
+    private function renderNavigationItem(PictureEntry $entry, string $currentId, string $basePath): string
     {
         $id = $this->escape($entry->id);
-        $url = $this->escape('/picture/' . $entry->id);
+        $url = $this->escape($this->url($basePath, '/picture/' . $entry->id));
         $current = $entry->id === $currentId;
         $currentAttribute = $current ? ' aria-current="page"' : '';
         $currentClass = $current ? ' class="is-current"' : '';
@@ -95,5 +97,10 @@ HTML;
     private function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    private function url(string $basePath, string $path): string
+    {
+        return rtrim($basePath, '/') . '/' . ltrim($path, '/');
     }
 }

@@ -1,0 +1,12 @@
+Options -Indexes
+DirectoryIndex disabled
+
+RewriteEngine On
+
+RewriteRule (^|/)\. - [F,END]
+RewriteRule ^(?:src|vendor|pictures)(?:/|$) - [F,END]
+RewriteRule ^composer\.(?:json|lock)$ - [F,END]
+
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [END]
+RewriteRule ^ index.php [END]

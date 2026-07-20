@@ -59,6 +59,32 @@ final class ApplicationTest extends TestCase
         self::assertStringContainsString('src="/media/safe_1"', $response->body);
     }
 
+    public function testSubfolderRouteUsesBasePathForApplicationUrls(): void
+    {
+        $response = $this->application->handle(
+            new Request('GET', '/subfolder/picture/safe_1', '/subfolder'),
+        );
+
+        self::assertSame(200, $response->statusCode);
+        self::assertStringContainsString('href="/subfolder/assets/picture-browser.css"', $response->body);
+        self::assertStringContainsString('src="/subfolder/assets/picture-browser.js" defer', $response->body);
+        self::assertStringContainsString('src="/subfolder/media/safe_1"', $response->body);
+        self::assertStringContainsString('href="/subfolder/picture/safe_1"', $response->body);
+
+        $home = $this->application->handle(new Request('GET', '/subfolder/', '/subfolder'));
+        self::assertSame(200, $home->statusCode);
+        self::assertStringContainsString('src="/subfolder/media/safe_1"', $home->body);
+
+        $media = $this->application->handle(new Request('GET', '/subfolder/media/safe_1', '/subfolder'));
+        self::assertSame(200, $media->statusCode);
+        self::assertSame(self::validPng(), $media->body);
+
+        $outsideBase = $this->application->handle(
+            new Request('GET', '/other/picture/safe_1', '/subfolder'),
+        );
+        self::assertSame(404, $outsideBase->statusCode);
+    }
+
     public function testPictureRouteRendersOrderedCatalogNavigationAndBrowserAssets(): void
     {
         $this->writeEntry('10', 'picture.jpg', self::validJpeg(), 'ten');
@@ -99,7 +125,7 @@ final class ApplicationTest extends TestCase
 
     public function testBrowserZoomAssetDeclaresBoundedSteppedZoom(): void
     {
-        $asset = file_get_contents(dirname(__DIR__, 2) . '/public/assets/picture-browser.js');
+        $asset = file_get_contents(dirname(__DIR__, 2) . '/subfolder/assets/picture-browser.js');
 
         self::assertNotFalse($asset);
         self::assertStringContainsString('const MIN_ZOOM = 0.5;', $asset);
@@ -208,16 +234,21 @@ final class ApplicationTest extends TestCase
     {
         $hadMethod = array_key_exists('REQUEST_METHOD', $_SERVER);
         $hadUri = array_key_exists('REQUEST_URI', $_SERVER);
+        $hadScriptName = array_key_exists('SCRIPT_NAME', $_SERVER);
         $oldMethod = $_SERVER['REQUEST_METHOD'] ?? null;
         $oldUri = $_SERVER['REQUEST_URI'] ?? null;
+        $oldScriptName = $_SERVER['SCRIPT_NAME'] ?? null;
 
         try {
             $_SERVER['REQUEST_METHOD'] = 'GET';
             $_SERVER['REQUEST_URI'] = '/picture/safe_1?ignored=1';
+            $_SERVER['SCRIPT_NAME'] = '/index.php';
             $request = Request::fromGlobals();
 
             self::assertSame('GET', $request->method);
             self::assertSame('/picture/safe_1', $request->path);
+            self::assertSame('', $request->basePath);
+            self::assertSame('/picture/safe_1', $request->applicationPath());
         } finally {
             if ($hadMethod) {
                 $_SERVER['REQUEST_METHOD'] = $oldMethod;
@@ -229,6 +260,51 @@ final class ApplicationTest extends TestCase
                 $_SERVER['REQUEST_URI'] = $oldUri;
             } else {
                 unset($_SERVER['REQUEST_URI']);
+            }
+
+            if ($hadScriptName) {
+                $_SERVER['SCRIPT_NAME'] = $oldScriptName;
+            } else {
+                unset($_SERVER['SCRIPT_NAME']);
+            }
+        }
+    }
+
+    public function testRequestFromGlobalsDetectsPackageBasePath(): void
+    {
+        $hadMethod = array_key_exists('REQUEST_METHOD', $_SERVER);
+        $hadUri = array_key_exists('REQUEST_URI', $_SERVER);
+        $hadScriptName = array_key_exists('SCRIPT_NAME', $_SERVER);
+        $oldMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $oldUri = $_SERVER['REQUEST_URI'] ?? null;
+        $oldScriptName = $_SERVER['SCRIPT_NAME'] ?? null;
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_SERVER['REQUEST_URI'] = '/subfolder/media/safe_1?download=1';
+            $_SERVER['SCRIPT_NAME'] = '/subfolder/index.php';
+            $request = Request::fromGlobals();
+
+            self::assertSame('/subfolder', $request->basePath);
+            self::assertSame('/subfolder/media/safe_1', $request->path);
+            self::assertSame('/media/safe_1', $request->applicationPath());
+        } finally {
+            if ($hadMethod) {
+                $_SERVER['REQUEST_METHOD'] = $oldMethod;
+            } else {
+                unset($_SERVER['REQUEST_METHOD']);
+            }
+
+            if ($hadUri) {
+                $_SERVER['REQUEST_URI'] = $oldUri;
+            } else {
+                unset($_SERVER['REQUEST_URI']);
+            }
+
+            if ($hadScriptName) {
+                $_SERVER['SCRIPT_NAME'] = $oldScriptName;
+            } else {
+                unset($_SERVER['SCRIPT_NAME']);
             }
         }
     }
