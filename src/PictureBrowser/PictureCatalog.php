@@ -63,6 +63,47 @@ final class PictureCatalog
         return null;
     }
 
+    public function findMedia(string $id): ?PictureMedia
+    {
+        $entry = $this->find($id);
+        if ($entry === null) {
+            return null;
+        }
+
+        $directory = $this->resolveDirectory($entry->id);
+        if ($directory === null) {
+            return null;
+        }
+
+        $path = $this->resolveReadableFile($directory, $entry->imageFilename);
+        if ($path === null || !$this->isUsableImage($path, $entry->imageFilename)) {
+            return null;
+        }
+
+        $mimeType = $entry->imageFilename === 'picture.jpg'
+            ? 'image/jpeg'
+            : 'image/png';
+
+        return new PictureMedia($entry->id, $entry->imageFilename, $path, $mimeType);
+    }
+
+    public function readMedia(PictureMedia $media): ?string
+    {
+        $approved = $this->findMedia($media->id);
+        if (!$this->sameMedia($approved, $media)) {
+            return null;
+        }
+
+        $path = $this->resolveReadablePath($media->path, false);
+        if ($path === null || $path !== $media->path) {
+            return null;
+        }
+
+        $contents = @file_get_contents($path);
+
+        return $contents === false ? null : $contents;
+    }
+
     private static function resolveConfiguredRoot(string $configuredRoot): ?string
     {
         if ($configuredRoot === '' || is_link($configuredRoot)) {
@@ -208,6 +249,15 @@ final class PictureCatalog
         return ($imageInfo[0] ?? 0) > 0
             && ($imageInfo[1] ?? 0) > 0
             && ($imageInfo[2] ?? null) === $expectedType;
+    }
+
+    private function sameMedia(?PictureMedia $approved, PictureMedia $media): bool
+    {
+        return $approved !== null
+            && $approved->id === $media->id
+            && $approved->filename === $media->filename
+            && $approved->path === $media->path
+            && $approved->mimeType === $media->mimeType;
     }
 
     private static function compareEntries(PictureEntry $left, PictureEntry $right): int
