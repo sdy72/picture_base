@@ -5,7 +5,8 @@ set -Eeuo pipefail
 export LC_ALL=C.UTF-8
 
 PROJECT="picture-browser-p4-$$"
-PORT="${PICTURE_BROWSER_PORT:-18080}"
+PORT=8080
+REPOSITORY_ROOT="$(pwd)"
 FIXTURE_ROOT=''
 OUTSIDE_ROOT=''
 WORK_ROOT=''
@@ -59,13 +60,11 @@ require_command tar
 
 docker compose version >/dev/null 2>&1 || fail 'docker compose is unavailable'
 docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
-[[ "$PORT" =~ ^[0-9]+$ ]] || fail "PICTURE_BROWSER_PORT is not numeric: $PORT"
 
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/picture-browser-p4-fixture.XXXXXX")"
 OUTSIDE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/picture-browser-p4-outside.XXXXXX")"
 WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/picture-browser-p4-work.XXXXXX")"
 export PICTURES_HOST_PATH="$FIXTURE_ROOT"
-export PICTURE_BROWSER_PORT="$PORT"
 
 PNG_BASE64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 JPEG_BASE64='/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Qf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8Qf//Z'
@@ -132,6 +131,7 @@ chmod -R a+rwX "$FIXTURE_ROOT"
 
 DOCKERFILE_CONTENTS="$(<Dockerfile)"
 COMPOSE_CONTENTS="$(<compose.yaml)"
+APACHE_CONTENTS="$(<docker/apache-vhost.conf)"
 [[ "$DOCKERFILE_CONTENTS" == *'FROM php:8.5.4-apache-bookworm@sha256:621abbc4602fc34ddc78144cd4c672729bb547d466ef56276248a78bd537576d'* ]] \
     || fail 'Dockerfile does not pin the approved PHP runtime digest'
 [[ "$DOCKERFILE_CONTENTS" == *'FROM composer:2.9.5@sha256:698d3801b2a622ace460c4743c781282fcbcb733a4cbf8b31c44731e846585e8'* ]] \
@@ -140,12 +140,29 @@ COMPOSE_CONTENTS="$(<compose.yaml)"
     || fail 'a floating latest image reference is present'
 [[ "$DOCKERFILE_CONTENTS" == *'composer.lock'* && "$DOCKERFILE_CONTENTS" == *'composer install'* ]] \
     || fail 'Dockerfile does not install from composer.lock'
-[[ "$COMPOSE_CONTENTS" == *'127.0.0.1:${PICTURE_BROWSER_PORT:-8080}:80'* ]] \
+[[ "$COMPOSE_CONTENTS" == *'127.0.0.1:8080:80'* ]] \
     || fail 'Compose listener is not explicitly localhost-only'
 [[ "$COMPOSE_CONTENTS" == *'target: /pictures'* && "$COMPOSE_CONTENTS" == *'read_only: true'* ]] \
     || fail 'Compose picture mount is not explicitly read-only'
+[[ "$APACHE_CONTENTS" == "ServerName picture-browser"$'\n\n<VirtualHost *:80>'* ]] \
+    || fail 'Apache global ServerName is missing or misplaced'
+[[ "$APACHE_CONTENTS" == *$'\n    ServerName picture-browser\n'* ]] \
+    || fail 'Apache vhost-level ServerName is missing'
+
+DEFAULT_CONFIG_OUTPUT="$(env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" config)"
+[[ "$DEFAULT_CONFIG_OUTPUT" == *"source: $REPOSITORY_ROOT/pictures"* ]] \
+    || fail 'unset PICTURES_HOST_PATH does not resolve to the repository pictures folder'
+[[ "$DEFAULT_CONFIG_OUTPUT" == *'target: /pictures'* && "$DEFAULT_CONFIG_OUTPUT" == *'read_only: true'* ]] \
+    || fail 'unset PICTURES_HOST_PATH does not preserve the read-only /pictures mount'
+
+EMPTY_CONFIG_OUTPUT="$(PICTURES_HOST_PATH= docker compose -p "$PROJECT" config)"
+[[ "$EMPTY_CONFIG_OUTPUT" == *"source: $REPOSITORY_ROOT/pictures"* ]] \
+    || fail 'empty PICTURES_HOST_PATH does not resolve to the repository pictures folder'
+[[ "$EMPTY_CONFIG_OUTPUT" == *'target: /pictures'* && "$EMPTY_CONFIG_OUTPUT" == *'read_only: true'* ]] \
+    || fail 'empty PICTURES_HOST_PATH does not preserve the read-only /pictures mount'
 
 CONFIG_OUTPUT="$(docker compose -p "$PROJECT" config)"
+[[ "$CONFIG_OUTPUT" == *"source: $FIXTURE_ROOT"* ]] || fail 'explicit picture fixture override was not resolved'
 [[ "$CONFIG_OUTPUT" == *'host_ip: 127.0.0.1'* ]] || fail 'resolved Compose binding is not localhost-only'
 [[ "$CONFIG_OUTPUT" != *'host_ip: 0.0.0.0'* ]] || fail 'resolved Compose binding exposes 0.0.0.0'
 
@@ -161,6 +178,59 @@ while IFS= read -r line; do
         esac
     fi
 done < "$BUILD_LOG"
+
+printf 'Starting the default local picture fixture...\n'
+env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" up -d picture-browser
+COMPOSE_STARTED=true
+
+DEFAULT_CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q picture-browser)"
+[[ -n "$DEFAULT_CONTAINER_ID" ]] || fail 'Compose did not create the default picture-browser container'
+
+for attempt in {1..30}; do
+    if response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$PORT/picture/example" 2>/dev/null)" && [[ "$response" == '200' ]]; then
+        break
+    fi
+    if (( attempt == 30 )); then
+        fail 'the default picture fixture did not become ready on the localhost listener'
+    fi
+    sleep 1
+done
+
+DEFAULT_PAGE="$WORK_ROOT/default-picture-example.html"
+DEFAULT_PAGE_METADATA="$(curl --silent --show-error --path-as-is --output "$DEFAULT_PAGE" \
+    --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT/picture/example")"
+IFS=$'\t' read -r DEFAULT_PAGE_STATUS DEFAULT_PAGE_TYPE <<< "$DEFAULT_PAGE_METADATA"
+[[ "$DEFAULT_PAGE_STATUS" == '200' && "$DEFAULT_PAGE_TYPE" == 'text/html; charset=UTF-8' ]] \
+    || fail 'default /picture/example did not return HTTP 200 HTML'
+DEFAULT_PAGE_BODY="$(<"$DEFAULT_PAGE")"
+[[ "$DEFAULT_PAGE_BODY" == *'Picture example'* \
+    && "$DEFAULT_PAGE_BODY" == *'src="/media/example"'* \
+    && "$DEFAULT_PAGE_BODY" == *'Bundled example picture.'* ]] \
+    || fail 'default /picture/example did not render the example media route'
+
+DEFAULT_MEDIA="$WORK_ROOT/default-picture-example.png"
+DEFAULT_MEDIA_METADATA="$(curl --silent --show-error --path-as-is --output "$DEFAULT_MEDIA" \
+    --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT/media/example")"
+IFS=$'\t' read -r DEFAULT_MEDIA_STATUS DEFAULT_MEDIA_TYPE <<< "$DEFAULT_MEDIA_METADATA"
+[[ "$DEFAULT_MEDIA_STATUS" == '200' && "$DEFAULT_MEDIA_TYPE" == 'image/png' ]] \
+    || fail 'default /media/example did not return HTTP 200 PNG'
+cmp -s "$DEFAULT_MEDIA" "$REPOSITORY_ROOT/pictures/example/picture.png" \
+    || fail 'default /media/example did not preserve the fixture bytes'
+
+DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.RW}}{{end}}{{end}}'
+DEFAULT_MOUNT_RW="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_CONTAINER_ID")"
+[[ "$DEFAULT_MOUNT_RW" == 'false' ]] || fail "the default /pictures mount is not read-only: $DEFAULT_MOUNT_RW"
+
+DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.Source}}{{end}}{{end}}'
+DEFAULT_MOUNT_SOURCE="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_CONTAINER_ID")"
+[[ "$DEFAULT_MOUNT_SOURCE" == "$REPOSITORY_ROOT/pictures" ]] \
+    || fail "unexpected default /pictures source: $DEFAULT_MOUNT_SOURCE"
+
+DEFAULT_APACHE_LOGS="$(docker compose -p "$PROJECT" logs --no-color picture-browser)"
+[[ "$DEFAULT_APACHE_LOGS" != *'AH00558'* ]] || fail 'Apache startup logs contain AH00558'
+
+docker compose -p "$PROJECT" down --volumes --remove-orphans
+COMPOSE_STARTED=false
 
 printf 'Starting the Compose service...\n'
 docker compose -p "$PROJECT" up -d picture-browser

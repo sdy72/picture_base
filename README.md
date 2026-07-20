@@ -3,7 +3,6 @@
 ## Runtime prerequisites
 
 - Docker Engine with the `docker compose` plugin
-- A host folder containing the picture contract described below
 
 The image uses the official `php:8.5.4-apache-bookworm` runtime and Composer
 2.9.5. Both image references are digest-pinned in `Dockerfile`; the build
@@ -12,7 +11,8 @@ autoload files.
 
 ## Picture folder contract
 
-Set `PICTURES_HOST_PATH` to an existing absolute host path. Each immediate
+By default, Compose mounts the repository-relative `./pictures` folder. To use
+another existing folder, set `PICTURES_HOST_PATH` to its path. Each immediate
 child directory is an ID matching `[A-Za-z0-9_-]+` and at most 128 characters:
 
 ```text
@@ -31,33 +31,32 @@ lexical order.
 
 The host folder is mounted at `/pictures` with `PICTURES_ROOT=/pictures` and
 `read_only: true`. The Apache service runs as `picture-browser` and publishes
-only on localhost. The default port is 8080; override it with
-`PICTURE_BROWSER_PORT`.
+only on localhost at port 8080.
 
 ```sh
-export PICTURES_HOST_PATH=/absolute/path/to/pictures
-export PICTURE_BROWSER_PORT=8080  # optional
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:${PICTURE_BROWSER_PORT:-8080}/picture/<id>`. The
-stable media route is `/media/<id>`. The application is read-only: do not
-expect uploads, editing, or search functionality.
+Open `http://127.0.0.1:8080/picture/example` to view the bundled fixture. For
+an explicit picture root, run Compose with an override such as
+`PICTURES_HOST_PATH=/absolute/path/to/pictures docker compose up -d --build`,
+then use `/picture/<id>`. The stable media route is `/media/<id>`. The
+application is read-only: do not expect uploads, editing, or search functionality.
 
 ## Verification and teardown
 
 The verification script creates temporary external fixtures (including invalid
-and symlink cases), builds the pinned image, starts Compose, checks the
-localhost binding and read-only mount, exercises the HTTP routes/media/assets,
+and symlink cases), checks the default `./pictures` fixture and sample routes,
+then builds the pinned image, starts Compose with an explicit fixture, checks
+the localhost binding and read-only mount, exercises the HTTP routes/media/assets,
 and removes its containers and temporary fixtures on exit:
 
 ```sh
 ./scripts/verify-compose.sh
 ```
 
-Use `PICTURE_BROWSER_PORT` to select a different temporary verification port.
-For a manually started stack, inspect it with `docker compose ps` and tear it
-down with:
+The service always uses the localhost-only host binding on port 8080. For a
+manually started stack, inspect it with `docker compose ps` and tear it down with:
 
 ```sh
 docker compose down --remove-orphans
