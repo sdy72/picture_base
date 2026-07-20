@@ -1,0 +1,15 @@
+services:
+  picture-browser:
+    image: picture-browser:8.5.4
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PICTURES_ROOT: /pictures
+    ports:
+      - "127.0.0.1:${PICTURE_BROWSER_PORT:-8080}:80"
+    volumes:
+      - type: bind
+        source: ${PICTURES_HOST_PATH:?PICTURES_HOST_PATH must be an existing picture folder}
+        target: /pictures
+        read_only: true

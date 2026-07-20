@@ -1,0 +1,7 @@
+.git
+.gitignore
+PLAN.md
+README.md
+tests
+vendor
+scripts
