@@ -1,0 +1,25 @@
+{
+    "name": "picture-base/picture-browser",
+    "description": "A framework-free picture browser",
+    "type": "project",
+    "require": {
+        "php": ">=8.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PictureBrowser\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PictureBrowser\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --testdox",
+        "test:unit": "phpunit tests"
+    }
+}
