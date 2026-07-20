@@ -28,9 +28,22 @@ final class Application
             return Response::methodNotAllowed();
         }
 
-        return $route['type'] === 'picture'
-            ? $this->pictureResponse($route['id'])
-            : $this->mediaResponse($route['id']);
+        return match ($route['type']) {
+            'home' => $this->homeResponse(),
+            'picture' => $this->pictureResponse($route['id']),
+            'media' => $this->mediaResponse($route['id']),
+        };
+    }
+
+    private function homeResponse(): Response
+    {
+        $entries = $this->catalog->entries();
+        $entry = $entries[0] ?? null;
+        if ($entry === null) {
+            return Response::notFound();
+        }
+
+        return $this->renderPicture($entry, $entries);
     }
 
     private function pictureResponse(string $id): Response
@@ -40,10 +53,16 @@ final class Application
             return Response::notFound();
         }
 
+        return $this->renderPicture($entry, $this->catalog->entries());
+    }
+
+    /** @param list<PictureEntry> $entries */
+    private function renderPicture(PictureEntry $entry, array $entries): Response
+    {
         return new Response(
             200,
             ['Content-Type' => 'text/html; charset=UTF-8'],
-            $this->renderer->render($entry, $this->catalog->entries()),
+            $this->renderer->render($entry, $entries),
         );
     }
 

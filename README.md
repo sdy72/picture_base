@@ -37,8 +37,9 @@ only on localhost at port 8080.
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8080/picture/example` to view the bundled fixture. For
-an explicit picture root, run Compose with an override such as
+Open `http://127.0.0.1:8080/` to view the first picture, or use
+`http://127.0.0.1:8080/picture/example` for the bundled fixture. For an
+explicit picture root, run Compose with an override such as
 `PICTURES_HOST_PATH=/absolute/path/to/pictures docker compose up -d --build`,
 then use `/picture/<id>`. The stable media route is `/media/<id>`. The
 application is read-only: do not expect uploads, editing, or search functionality.

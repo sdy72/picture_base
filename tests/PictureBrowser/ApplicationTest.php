@@ -50,6 +50,15 @@ final class ApplicationTest extends TestCase
         self::assertStringNotContainsString('<script title="quoted">', $response->body);
     }
 
+    public function testHomeRouteRendersTheFirstPicture(): void
+    {
+        $response = $this->application->handle(new Request('GET', '/'));
+
+        self::assertSame(200, $response->statusCode);
+        self::assertStringContainsString('Picture safe_1', $response->body);
+        self::assertStringContainsString('src="/media/safe_1"', $response->body);
+    }
+
     public function testPictureRouteRendersOrderedCatalogNavigationAndBrowserAssets(): void
     {
         $this->writeEntry('10', 'picture.jpg', self::validJpeg(), 'ten');

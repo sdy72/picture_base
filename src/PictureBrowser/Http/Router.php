@@ -8,9 +8,13 @@ use PictureBrowser\PictureId;
 
 final class Router
 {
-    /** @return array{type: 'picture'|'media', id: string}|null */
+    /** @return array{type: 'home'}|array{type: 'picture'|'media', id: string}|null */
     public function match(Request $request): ?array
     {
+        if ($request->path === '/') {
+            return ['type' => 'home'];
+        }
+
         $matches = [];
         if (preg_match('/\A\/(picture|media)\/([^\/]+)\z/', $request->path, $matches) !== 1) {
             return null;
