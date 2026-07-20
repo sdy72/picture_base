@@ -7,7 +7,7 @@ namespace PictureBrowser;
 final class PictureId
 {
     /** Maximum number of ASCII characters in a picture folder ID. */
-    public const int MAX_LENGTH = 128;
+    public const MAX_LENGTH = 128;
 
     private function __construct()
     {

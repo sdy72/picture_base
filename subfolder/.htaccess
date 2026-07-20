@@ -6,6 +6,7 @@ RewriteEngine On
 RewriteRule (^|/)\. - [F,END]
 RewriteRule ^(?:src|vendor|pictures)(?:/|$) - [F,END]
 RewriteRule ^composer\.(?:json|lock)$ - [F,END]
+RewriteRule ^bootstrap\.php$ - [F,END]
 
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^ - [END]

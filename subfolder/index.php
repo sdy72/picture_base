@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/vendor/autoload.php';
+require __DIR__ . '/bootstrap.php';
 
 $configuredRoot = getenv('PICTURES_ROOT');
 $root = is_string($configuredRoot) && $configuredRoot !== ''

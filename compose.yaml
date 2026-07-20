@@ -1,13 +1,25 @@
 services:
   picture-browser:
-    image: picture-browser:8.5.4
+    image: picture-browser:8.2.32-apache
     build:
       context: .
       dockerfile: Dockerfile
+      target: apache
+    depends_on:
+      - picture-browser-php
+    ports:
+      - "127.0.0.1:${HOST_PORT:-8080}:80"
+
+  picture-browser-php:
+    image: picture-browser:8.2.32-fpm
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: php-runtime
     environment:
       PICTURES_ROOT: /pictures
-    ports:
-      - "127.0.0.1:8080:80"
+    expose:
+      - "9000"
     volumes:
       - type: bind
         source: ${PICTURES_HOST_PATH:-./subfolder/pictures}

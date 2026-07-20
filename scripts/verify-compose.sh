@@ -5,7 +5,10 @@ set -Eeuo pipefail
 export LC_ALL=C.UTF-8
 
 PROJECT="picture-browser-p4-$$"
-PORT=8080
+PORT="${HOST_PORT:-8080}"
+BASE_PATH='/hed'
+WEB_SERVICE='picture-browser'
+PHP_SERVICE='picture-browser-php'
 REPOSITORY_ROOT="$(pwd)"
 REPOSITORY_PICTURES_ROOT="$REPOSITORY_ROOT/subfolder/pictures"
 PACKAGE_ROOT="$REPOSITORY_ROOT/subfolder"
@@ -65,14 +68,18 @@ docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
 
 [[ -f "$PACKAGE_ROOT/index.php" && -f "$PACKAGE_ROOT/.htaccess" ]] \
     || fail 'FTP package front controller or Apache rules are missing'
-[[ -f "$PACKAGE_ROOT/vendor/autoload.php" ]] \
-    || fail 'FTP package production Composer autoloader is missing'
+[[ -f "$PACKAGE_ROOT/bootstrap.php" ]] \
+    || fail 'FTP package dependency-free bootstrap is missing'
+[[ ! -e "$PACKAGE_ROOT/composer.json" && ! -e "$PACKAGE_ROOT/composer.lock" \
+    && ! -e "$PACKAGE_ROOT/vendor" ]] \
+    || fail 'FTP package contains local Composer artifacts'
 [[ -d "$REPOSITORY_PICTURES_ROOT" ]] \
     || fail 'FTP package picture directory is missing'
 
 PACKAGE_HTACCESS_CONTENTS="$(<"$PACKAGE_ROOT/.htaccess")"
 [[ "$PACKAGE_HTACCESS_CONTENTS" == *'RewriteRule ^ index.php [END]'* \
-    && "$PACKAGE_HTACCESS_CONTENTS" == *'RewriteRule ^(?:src|vendor|pictures)(?:/|$) - [F,END]'* ]] \
+    && "$PACKAGE_HTACCESS_CONTENTS" == *'RewriteRule ^(?:src|vendor|pictures)(?:/|$) - [F,END]'* \
+    && "$PACKAGE_HTACCESS_CONTENTS" == *'RewriteRule ^bootstrap\.php$ - [F,END]'* ]] \
     || fail 'FTP package Apache rules do not route and protect the package'
 
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/picture-browser-p4-fixture.XXXXXX")"
@@ -146,18 +153,22 @@ chmod -R a+rwX "$FIXTURE_ROOT"
 DOCKERFILE_CONTENTS="$(<Dockerfile)"
 COMPOSE_CONTENTS="$(<compose.yaml)"
 APACHE_CONTENTS="$(<docker/apache-vhost.conf)"
-[[ "$DOCKERFILE_CONTENTS" == *'FROM php:8.5.4-apache-bookworm@sha256:621abbc4602fc34ddc78144cd4c672729bb547d466ef56276248a78bd537576d'* ]] \
-    || fail 'Dockerfile does not pin the approved PHP runtime digest'
-[[ "$DOCKERFILE_CONTENTS" == *'FROM composer:2.9.5@sha256:698d3801b2a622ace460c4743c781282fcbcb733a4cbf8b31c44731e846585e8'* ]] \
-    || fail 'Dockerfile does not pin the approved Composer digest'
+[[ "$DOCKERFILE_CONTENTS" == *'FROM php:8.2.32-fpm-bookworm@sha256:baed99aec14419f3d4413b3735f0723a0d1d754b9149f46762b662f3e3156284'* ]] \
+    || fail 'Dockerfile does not pin the approved PHP FPM runtime digest'
+[[ "$DOCKERFILE_CONTENTS" == *'FROM httpd:2.4.65-bookworm@sha256:fbc12199ccad031d8047e9c789d65aceee2d14f99ba90664cd3a3996867a5582'* ]] \
+    || fail 'Dockerfile does not pin the approved Apache runtime digest'
 [[ "$DOCKERFILE_CONTENTS" != *':latest'* && "$COMPOSE_CONTENTS" != *':latest'* ]] \
     || fail 'a floating latest image reference is present'
-[[ "$DOCKERFILE_CONTENTS" == *'composer.lock'* && "$DOCKERFILE_CONTENTS" == *'composer install'* ]] \
-    || fail 'Dockerfile does not install from composer.lock'
-[[ "$COMPOSE_CONTENTS" == *'127.0.0.1:8080:80'* ]] \
+[[ "$DOCKERFILE_CONTENTS" != *'composer install'* && "$DOCKERFILE_CONTENTS" != *'COPY --from=composer'* ]] \
+    || fail 'Docker tooling unexpectedly installs or copies Composer dependencies'
+[[ "$COMPOSE_CONTENTS" == *'127.0.0.1:${HOST_PORT:-8080}:80'* ]] \
     || fail 'Compose listener is not explicitly localhost-only'
 [[ "$COMPOSE_CONTENTS" == *'target: /pictures'* && "$COMPOSE_CONTENTS" == *'read_only: true'* ]] \
     || fail 'Compose picture mount is not explicitly read-only'
+[[ "$COMPOSE_CONTENTS" == *'picture-browser-php'* \
+    && "$DOCKERFILE_CONTENTS" == *'/var/www/html/hed/'* \
+    && "$APACHE_CONTENTS" == *'/hed/index.php'* ]] \
+    || fail 'Compose does not define the FPM service and deployment base path'
 [[ "$APACHE_CONTENTS" == "ServerName picture-browser"$'\n\n<VirtualHost *:80>'* ]] \
     || fail 'Apache global ServerName is missing or misplaced'
 [[ "$APACHE_CONTENTS" == *$'\n    ServerName picture-browser\n'* ]] \
@@ -181,8 +192,8 @@ CONFIG_OUTPUT="$(docker compose -p "$PROJECT" config)"
 [[ "$CONFIG_OUTPUT" != *'host_ip: 0.0.0.0'* ]] || fail 'resolved Compose binding exposes 0.0.0.0'
 
 BUILD_LOG="$WORK_ROOT/docker-build.log"
-printf 'Building the pinned P4 image...\n'
-docker compose -p "$PROJECT" build --pull --no-cache picture-browser 2>&1 | tee "$BUILD_LOG"
+printf 'Building the pinned P4 images...\n'
+docker compose -p "$PROJECT" build --pull --no-cache "$WEB_SERVICE" "$PHP_SERVICE" 2>&1 | tee "$BUILD_LOG"
 
 while IFS= read -r line; do
     if [[ "$line" == *'warning'* || "$line" == *'Warning'* || "$line" == *'WARNING'* || "$line" == *'WARN'* ]]; then
@@ -195,13 +206,15 @@ done < "$BUILD_LOG"
 
 printf 'Starting the default local picture fixture...\n'
 COMPOSE_STARTED=true
-env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" up -d picture-browser
+env -u PICTURES_HOST_PATH docker compose -p "$PROJECT" up -d "$WEB_SERVICE"
 
-DEFAULT_CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q picture-browser)"
+DEFAULT_CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q "$WEB_SERVICE")"
 [[ -n "$DEFAULT_CONTAINER_ID" ]] || fail 'Compose did not create the default picture-browser container'
+DEFAULT_PHP_CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q "$PHP_SERVICE")"
+[[ -n "$DEFAULT_PHP_CONTAINER_ID" ]] || fail 'Compose did not create the default PHP container'
 
 for attempt in {1..30}; do
-    if response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$PORT/picture/example" 2>/dev/null)" && [[ "$response" == '200' ]]; then
+    if response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$PORT$BASE_PATH/picture/example" 2>/dev/null)" && [[ "$response" == '200' ]]; then
         break
     fi
     if (( attempt == 30 )); then
@@ -212,19 +225,19 @@ done
 
 DEFAULT_PAGE="$WORK_ROOT/default-picture-example.html"
 DEFAULT_PAGE_METADATA="$(curl --silent --show-error --path-as-is --output "$DEFAULT_PAGE" \
-    --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT/picture/example")"
+    --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT$BASE_PATH/picture/example")"
 IFS=$'\t' read -r DEFAULT_PAGE_STATUS DEFAULT_PAGE_TYPE <<< "$DEFAULT_PAGE_METADATA"
 [[ "$DEFAULT_PAGE_STATUS" == '200' && "$DEFAULT_PAGE_TYPE" == 'text/html; charset=UTF-8' ]] \
-    || fail 'default /picture/example did not return HTTP 200 HTML'
+    || fail 'default /hed/picture/example did not return HTTP 200 HTML'
 DEFAULT_PAGE_BODY="$(<"$DEFAULT_PAGE")"
 [[ "$DEFAULT_PAGE_BODY" == *'Picture example'* \
-    && "$DEFAULT_PAGE_BODY" == *'src="/media/example"'* \
+    && "$DEFAULT_PAGE_BODY" == *'src="/hed/media/example"'* \
     && "$DEFAULT_PAGE_BODY" == *'Bundled example picture.'* ]] \
     || fail 'default /picture/example did not render the example media route'
 
 DEFAULT_MEDIA="$WORK_ROOT/default-picture-example.png"
 DEFAULT_MEDIA_METADATA="$(curl --silent --show-error --path-as-is --output "$DEFAULT_MEDIA" \
-    --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT/media/example")"
+    --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT$BASE_PATH/media/example")"
 IFS=$'\t' read -r DEFAULT_MEDIA_STATUS DEFAULT_MEDIA_TYPE <<< "$DEFAULT_MEDIA_METADATA"
 [[ "$DEFAULT_MEDIA_STATUS" == '200' && "$DEFAULT_MEDIA_TYPE" == 'image/png' ]] \
     || fail 'default /media/example did not return HTTP 200 PNG'
@@ -232,15 +245,15 @@ cmp -s "$DEFAULT_MEDIA" "$REPOSITORY_PICTURES_ROOT/example/picture.png" \
     || fail 'default /media/example did not preserve the fixture bytes'
 
 DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.RW}}{{end}}{{end}}'
-DEFAULT_MOUNT_RW="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_CONTAINER_ID")"
+DEFAULT_MOUNT_RW="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_PHP_CONTAINER_ID")"
 [[ "$DEFAULT_MOUNT_RW" == 'false' ]] || fail "the default /pictures mount is not read-only: $DEFAULT_MOUNT_RW"
 
 DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.Source}}{{end}}{{end}}'
-DEFAULT_MOUNT_SOURCE="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_CONTAINER_ID")"
+DEFAULT_MOUNT_SOURCE="$(docker inspect --format "$DEFAULT_MOUNT_FORMAT" "$DEFAULT_PHP_CONTAINER_ID")"
 [[ "$DEFAULT_MOUNT_SOURCE" == "$REPOSITORY_PICTURES_ROOT" ]] \
     || fail "unexpected default /pictures source: $DEFAULT_MOUNT_SOURCE"
 
-DEFAULT_APACHE_LOGS="$(docker compose -p "$PROJECT" logs --no-color picture-browser)"
+DEFAULT_APACHE_LOGS="$(docker compose -p "$PROJECT" logs --no-color "$WEB_SERVICE")"
 [[ "$DEFAULT_APACHE_LOGS" != *'AH00558'* ]] || fail 'Apache startup logs contain AH00558'
 
 docker compose -p "$PROJECT" down --volumes --remove-orphans
@@ -248,13 +261,15 @@ COMPOSE_STARTED=false
 
 printf 'Starting the Compose service...\n'
 COMPOSE_STARTED=true
-docker compose -p "$PROJECT" up -d picture-browser
+docker compose -p "$PROJECT" up -d "$WEB_SERVICE"
 
-CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q picture-browser)"
+CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q "$WEB_SERVICE")"
 [[ -n "$CONTAINER_ID" ]] || fail 'Compose did not create the picture-browser container'
+PHP_CONTAINER_ID="$(docker compose -p "$PROJECT" ps -q "$PHP_SERVICE")"
+[[ -n "$PHP_CONTAINER_ID" ]] || fail 'Compose did not create the PHP container'
 
 for attempt in {1..30}; do
-    if response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$PORT/picture/2" 2>/dev/null)" && [[ "$response" == '200' ]]; then
+    if response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$PORT$BASE_PATH/picture/2" 2>/dev/null)" && [[ "$response" == '200' ]]; then
         break
     fi
     if (( attempt == 30 )); then
@@ -264,11 +279,11 @@ for attempt in {1..30}; do
 done
 
 MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.RW}}{{end}}{{end}}'
-MOUNT_RW="$(docker inspect --format "$MOUNT_FORMAT" "$CONTAINER_ID")"
+MOUNT_RW="$(docker inspect --format "$MOUNT_FORMAT" "$PHP_CONTAINER_ID")"
 [[ "$MOUNT_RW" == 'false' ]] || fail "the /pictures mount is not read-only: $MOUNT_RW"
 
 MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.Source}}{{end}}{{end}}'
-MOUNT_SOURCE="$(docker inspect --format "$MOUNT_FORMAT" "$CONTAINER_ID")"
+MOUNT_SOURCE="$(docker inspect --format "$MOUNT_FORMAT" "$PHP_CONTAINER_ID")"
 [[ "$MOUNT_SOURCE" == "$FIXTURE_ROOT" ]] || fail "unexpected /pictures source: $MOUNT_SOURCE"
 
 PORT_MAPPING_TEMPLATE='{{(index (index .NetworkSettings.Ports "80/tcp") 0).HostIp}}'
@@ -278,13 +293,16 @@ HOST_PORT="$(docker inspect --format "$PORT_MAPPING_TEMPLATE" "$CONTAINER_ID")"
 [[ "$HOST_IP" == '127.0.0.1' ]] || fail "published host IP is not 127.0.0.1: $HOST_IP"
 [[ "$HOST_PORT" == "$PORT" ]] || fail "published host port is not $PORT: $HOST_PORT"
 
-docker compose -p "$PROJECT" exec -T picture-browser php -r \
-    'require "/var/www/html/vendor/autoload.php"; exit(class_exists("PictureBrowser\\Application") ? 0 : 1);' \
-    || fail 'Composer autoloading was not generated in the image'
+docker compose -p "$PROJECT" exec -T "$PHP_SERVICE" php -r \
+    'require "/var/www/html/hed/bootstrap.php"; exit(class_exists("PictureBrowser\\Application") ? 0 : 1);' \
+    || fail 'The package bootstrap did not load the application classes'
+docker compose -p "$PROJECT" exec -T "$PHP_SERVICE" php -r \
+    'exit(PHP_VERSION_ID === 80232 ? 0 : 1);' \
+    || fail 'The local PHP runtime does not match PHP 8.2.32'
 [[ -f "$FIXTURE_ROOT/2/picture.png" ]] || fail 'fixture disappeared before the write test'
 
 FIXTURE_HASH_BEFORE="$(tar -C "$FIXTURE_ROOT" --sort=name --format=ustar --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner -cf - . | sha256sum)"
-if docker compose -p "$PROJECT" exec -T --user www-data picture-browser \
+if docker compose -p "$PROJECT" exec -T --user www-data "$PHP_SERVICE" \
     sh -c 'touch /pictures/.p4-write-test' >/dev/null 2>&1; then
     fail 'the application user can write through the /pictures mount'
 fi
@@ -366,15 +384,23 @@ assert_not_found_status() {
     [[ "$status" == '404' ]] || fail "$path returned HTTP $status, expected 404"
 }
 
+PHPINFO="$WORK_ROOT/phpinfo.html"
+assert_http '200' 'text/html; charset=UTF-8' '/phpinfo.php' "$PHPINFO"
+PHPINFO_BODY="$(<"$PHPINFO")"
+assert_contains "$PHPINFO_BODY" 'PHP Version 8.2.32'
+assert_contains "$PHPINFO_BODY" 'FPM/FastCGI'
+assert_contains "$PHPINFO_BODY" 'memory_limit'
+assert_contains "$PHPINFO_BODY" '128M'
+
 PAGE="$WORK_ROOT/picture-2.html"
-assert_http '200' 'text/html; charset=UTF-8' '/picture/2' "$PAGE"
+assert_http '200' 'text/html; charset=UTF-8' "$BASE_PATH/picture/2" "$PAGE"
 PAGE_BODY="$(<"$PAGE")"
 assert_contains "$PAGE_BODY" 'Picture 2'
-assert_contains "$PAGE_BODY" 'src="/media/2"'
+assert_contains "$PAGE_BODY" 'src="/hed/media/2"'
 assert_contains "$PAGE_BODY" 'loading="lazy"'
 assert_contains "$PAGE_BODY" 'decoding="async"'
-assert_contains "$PAGE_BODY" 'href="/assets/picture-browser.css"'
-assert_contains "$PAGE_BODY" 'src="/assets/picture-browser.js" defer'
+assert_contains "$PAGE_BODY" 'href="/hed/assets/picture-browser.css"'
+assert_contains "$PAGE_BODY" 'src="/hed/assets/picture-browser.js" defer'
 assert_contains "$PAGE_BODY" '&lt;script title=&quot;quoted&quot;&gt;Zażółć &#039;gęślą&#039;&lt;/script&gt;<br>'
 assert_not_contains "${PAGE_BODY,,}" '<form'
 assert_not_contains "${PAGE_BODY,,}" 'upload'
@@ -397,17 +423,17 @@ for invalid_id in 'ambiguous' 'invalid-image' 'invalid-utf8' 'wrong-case' 'bad.d
 done
 
 PNG_RESPONSE="$WORK_ROOT/media-2.png"
-assert_http '200' 'image/png' '/media/2' "$PNG_RESPONSE"
+assert_http '200' 'image/png' "$BASE_PATH/media/2" "$PNG_RESPONSE"
 cmp -s "$PNG_RESPONSE" "$FIXTURE_ROOT/2/picture.png" || fail 'PNG media response changed the original bytes'
 
 JPEG_RESPONSE="$WORK_ROOT/media-jpeg-1.jpg"
-assert_http '200' 'image/jpeg' '/media/jpeg_1' "$JPEG_RESPONSE"
+assert_http '200' 'image/jpeg' "$BASE_PATH/media/jpeg_1" "$JPEG_RESPONSE"
 cmp -s "$JPEG_RESPONSE" "$FIXTURE_ROOT/jpeg_1/picture.jpg" || fail 'JPEG media response changed the original bytes'
 
 CSS_RESPONSE="$WORK_ROOT/picture-browser.css"
-assert_http '200' 'text/css' '/assets/picture-browser.css' "$CSS_RESPONSE"
+assert_http '200' 'text/css' "$BASE_PATH/assets/picture-browser.css" "$CSS_RESPONSE"
 JS_RESPONSE="$WORK_ROOT/picture-browser.js"
-assert_http '200' 'text/javascript' '/assets/picture-browser.js' "$JS_RESPONSE"
+assert_http '200' 'text/javascript' "$BASE_PATH/assets/picture-browser.js" "$JS_RESPONSE"
 JS_BODY="$(<"$JS_RESPONSE")"
 assert_contains "$JS_BODY" 'const MIN_ZOOM = 0.5;'
 assert_contains "$JS_BODY" 'const MAX_ZOOM = 3.0;'
@@ -417,16 +443,16 @@ assert_contains "$JS_BODY" 'Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))'
 assert_contains "$JS_BODY" 'zoom + change'
 
 for not_found_path in \
-    '/picture/missing' \
-    '/picture/bad.dot' \
-    '/picture/../2' \
-    '/media/link-dir' \
-    '/media/link-file' \
-    '/media/../index.php' \
-    '/unknown/2'; do
+    "$BASE_PATH/picture/missing" \
+    "$BASE_PATH/picture/bad.dot" \
+    "$BASE_PATH/picture/../2" \
+    "$BASE_PATH/media/link-dir" \
+    "$BASE_PATH/media/link-file" \
+    "$BASE_PATH/media/../index.php" \
+    "$BASE_PATH/unknown/2"; do
     assert_not_found "$not_found_path"
 done
 
-assert_not_found_status '/picture/a%2Fb'
+assert_not_found_status "$BASE_PATH/picture/a%2Fb"
 
 printf 'P4 Docker/Compose verification passed; cleanup will remove containers and temporary fixtures.\n'

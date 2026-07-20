@@ -3,31 +3,33 @@
 ## FTP deployment package
 
 `subfolder/` is the complete production package. Copy that folder as-is to
-`./public/subfolder` on the FTP server; Apache must provide PHP 8.3+ and allow
+`./public/subfolder` on the FTP server; Apache must provide PHP 8.2+ and allow
 `.htaccess` overrides with `mod_rewrite` enabled. The package includes its
-front controller, assets, source, Composer metadata, and bundled picture data.
+front controller, assets, source, package-local autoload bootstrap, and bundled
+picture data.
 It does not depend on files outside the folder, and its links detect the
 installed URL base at runtime.
 
-The package includes its production Composer autoloader. To regenerate it before
-uploading, run from the repository root:
+Composer is local development tooling only. Install the root development
+dependencies from the repository root:
 
 ```sh
-composer install --working-dir=subfolder --no-dev --no-interaction --no-progress --prefer-dist --classmap-authoritative
+composer install --no-interaction --no-progress
 ```
 
 The package's `.htaccess` disables indexes, routes application paths to
 `index.php`, and denies direct access to source, dependencies, picture data,
-dotfiles, and Composer metadata.
+dotfiles, the package bootstrap, and Composer metadata if accidentally added.
 
 ## Runtime prerequisites
 
 - Docker Engine with the `docker compose` plugin
 
-The image uses the official `php:8.5.4-apache-bookworm` runtime and Composer
-2.9.5. Both image references are digest-pinned in `Dockerfile`; the build
-installs from the committed `composer.lock` and generates the application
-autoload files.
+The local demo uses the official PHP `8.2.32-fpm-bookworm` runtime behind
+Apache `2.4.65`, matching the deployment server's PHP version and FPM/FastCGI
+SAPI. Both image references are digest-pinned in `Dockerfile`. The local-only
+`/phpinfo.php` route exposes the resulting PHP configuration for comparison
+with `deploy_server_phpinfo.html`.
 
 ## Picture folder contract
 
@@ -52,17 +54,19 @@ lexical order.
 
 The host folder is mounted at `/pictures` with `PICTURES_ROOT=/pictures` and
 `read_only: true`. The Apache service runs as `picture-browser` and publishes
-only on localhost at port 8080.
+only on localhost at port 8080 by default. Set `HOST_PORT` to use another local
+port.
 
 ```sh
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8080/` to view the first picture, or use
-`http://127.0.0.1:8080/picture/example` for the bundled fixture. For an
+Open `http://127.0.0.1:8080/hed/` to view the first picture, or use
+`http://127.0.0.1:8080/hed/picture/example` for the bundled fixture. Use
+`http://127.0.0.1:8080/phpinfo.php` to inspect the local PHP runtime. For an
 explicit picture root, run Compose with an override such as
 `PICTURES_HOST_PATH=/absolute/path/to/pictures docker compose up -d --build`,
-then use `/picture/<id>`. The stable media route is `/media/<id>`. The
+then use `/hed/picture/<id>`. The stable media route is `/hed/media/<id>`. The
 application is read-only: do not expect uploads, editing, or search functionality.
 
 ## Verification and teardown
