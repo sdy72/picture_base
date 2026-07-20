@@ -52,7 +52,8 @@ REMOTE_PATH="$(quote_sftp_path "$SFTP_REMOTE_PATH")"
 printf 'Uploading %s to %s...\n' "$PACKAGE_ROOT" "$SFTP_REMOTE_PATH"
 {
     printf 'cd %s\n' "$REMOTE_PATH"
-    printf 'put -r %s/* %s/.[!.]* .\n' "$LOCAL_ROOT" "$LOCAL_ROOT"
+    printf 'put -r %s/* .\n' "$LOCAL_ROOT"
+    printf 'put -r %s/.[!.]* .\n' "$LOCAL_ROOT"
 } | sftp -i "$SFTP_KEY_PATH" -o BatchMode=no -o StrictHostKeyChecking=accept-new "$SFTP_USER@$SFTP_HOST"
 
 printf 'Deployment completed.\n'
