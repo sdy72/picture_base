@@ -128,6 +128,92 @@ final class PictureCatalogTest extends TestCase
         }
     }
 
+    public function testConfiguredRootSymlinkIsSkipped(): void
+    {
+        if (!function_exists('symlink')) {
+            self::markTestSkipped('Symlinks are not supported.');
+        }
+
+        $configuredRoot = $this->root . '-link';
+        $this->writeEntry('root-target', 'inside');
+
+        if (@symlink($this->root, $configuredRoot) === false) {
+            self::markTestSkipped('The test environment cannot create symlinks.');
+        }
+
+        try {
+            self::assertSame([], (new PictureCatalog($configuredRoot))->entries());
+        } finally {
+            unlink($configuredRoot);
+        }
+    }
+
+    public function testInRootDirectorySymlinkIsSkipped(): void
+    {
+        if (!function_exists('symlink')) {
+            self::markTestSkipped('Symlinks are not supported.');
+        }
+
+        $this->writeEntry('directory-target', 'inside');
+        $link = $this->root . '/directory-link';
+        if (@symlink($this->root . '/directory-target', $link) === false) {
+            self::markTestSkipped('The test environment cannot create symlinks.');
+        }
+
+        try {
+            $entries = (new PictureCatalog($this->root))->entries();
+
+            self::assertCount(1, $entries);
+            self::assertSame('directory-target', $entries[0]->id);
+        } finally {
+            unlink($link);
+        }
+    }
+
+    public function testInRootImageSymlinkIsSkipped(): void
+    {
+        if (!function_exists('symlink')) {
+            self::markTestSkipped('Symlinks are not supported.');
+        }
+
+        $this->makeDirectory('image-link');
+        $this->writeText('image-link', 'inside');
+        $target = $this->root . '/image-target.png';
+        $this->writeFileAt($this->root, 'image-target.png', self::validPng());
+        $link = $this->root . '/image-link/picture.png';
+        if (@symlink($target, $link) === false) {
+            self::markTestSkipped('The test environment cannot create symlinks.');
+        }
+
+        try {
+            self::assertSame([], (new PictureCatalog($this->root))->entries());
+        } finally {
+            unlink($link);
+        }
+    }
+
+    public function testInRootTextSymlinkIsSkipped(): void
+    {
+        if (!function_exists('symlink')) {
+            self::markTestSkipped('Symlinks are not supported.');
+        }
+
+        $this->makeDirectory('text-link');
+        $this->writeImage('text-link', 'picture.png');
+        $target = $this->root . '/text-target.txt';
+        $this->writeFileAt($this->root, 'text-target.txt', 'inside');
+        $link = $this->root . '/text-link/text.txt';
+        if (@symlink($target, $link) === false) {
+            self::markTestSkipped('The test environment cannot create symlinks.');
+        }
+
+        try {
+            self::assertSame([], (new PictureCatalog($this->root))->entries());
+        } finally {
+            unlink($link);
+        }
+    }
+
     public function testUnreadableImageIsSkippedWhenPermissionsAreEnforced(): void
     {
         $this->writeEntry('unreadable', 'text');

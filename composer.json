@@ -10,12 +10,12 @@
     },
     "autoload": {
         "psr-4": {
-            "PictureBrowser\\": "src/"
+            "PictureBrowser\\": "src/PictureBrowser/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "PictureBrowser\\Tests\\": "tests/"
+            "PictureBrowser\\Tests\\": "tests/PictureBrowser/"
         }
     },
     "scripts": {

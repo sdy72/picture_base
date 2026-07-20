@@ -65,7 +65,7 @@ final class PictureCatalog
 
     private static function resolveConfiguredRoot(string $configuredRoot): ?string
     {
-        if ($configuredRoot === '') {
+        if ($configuredRoot === '' || is_link($configuredRoot)) {
             return null;
         }
 
@@ -137,6 +137,10 @@ final class PictureCatalog
 
     private function resolveReadablePath(string $path, bool $directory): ?string
     {
+        if (is_link($path)) {
+            return null;
+        }
+
         $resolved = @realpath($path);
         if ($resolved === false || !$this->isBelowRoot($resolved)) {
             return null;
