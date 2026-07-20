@@ -38,12 +38,11 @@ final class Application
     private function homeResponse(string $basePath): Response
     {
         $entries = $this->catalog->entries();
-        $entry = $entries[0] ?? null;
-        if ($entry === null) {
+        if ($entries === []) {
             return Response::notFound();
         }
 
-        return $this->renderPicture($entry, $entries, $basePath);
+        return $this->renderOverview($entries, $basePath);
     }
 
     private function pictureResponse(string $id, string $basePath): Response
@@ -63,6 +62,16 @@ final class Application
             200,
             ['Content-Type' => 'text/html; charset=UTF-8'],
             $this->renderer->render($entry, $entries, $basePath),
+        );
+    }
+
+    /** @param list<PictureEntry> $entries */
+    private function renderOverview(array $entries, string $basePath): Response
+    {
+        return new Response(
+            200,
+            ['Content-Type' => 'text/html; charset=UTF-8'],
+            $this->renderer->renderOverview($entries, $basePath),
         );
     }
 

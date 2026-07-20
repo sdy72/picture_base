@@ -235,13 +235,13 @@ DEFAULT_PAGE_BODY="$(<"$DEFAULT_PAGE")"
     && "$DEFAULT_PAGE_BODY" == *'Bundled example picture.'* ]] \
     || fail 'default /picture/example did not render the example media route'
 
-DEFAULT_MEDIA="$WORK_ROOT/default-picture-example.png"
+DEFAULT_MEDIA="$WORK_ROOT/default-picture-example.jpg"
 DEFAULT_MEDIA_METADATA="$(curl --silent --show-error --path-as-is --output "$DEFAULT_MEDIA" \
     --write-out '%{http_code}\t%{content_type}' "http://127.0.0.1:$PORT$BASE_PATH/media/example")"
 IFS=$'\t' read -r DEFAULT_MEDIA_STATUS DEFAULT_MEDIA_TYPE <<< "$DEFAULT_MEDIA_METADATA"
-[[ "$DEFAULT_MEDIA_STATUS" == '200' && "$DEFAULT_MEDIA_TYPE" == 'image/png' ]] \
-    || fail 'default /media/example did not return HTTP 200 PNG'
-cmp -s "$DEFAULT_MEDIA" "$REPOSITORY_PICTURES_ROOT/example/picture.png" \
+[[ "$DEFAULT_MEDIA_STATUS" == '200' && "$DEFAULT_MEDIA_TYPE" == 'image/jpeg' ]] \
+    || fail 'default /media/example did not return HTTP 200 JPEG'
+cmp -s "$DEFAULT_MEDIA" "$REPOSITORY_PICTURES_ROOT/example/picture.jpg" \
     || fail 'default /media/example did not preserve the fixture bytes'
 
 DEFAULT_MOUNT_FORMAT='{{range .Mounts}}{{if eq .Destination "/pictures"}}{{.RW}}{{end}}{{end}}'
@@ -392,11 +392,25 @@ assert_contains "$PHPINFO_BODY" 'FPM/FastCGI'
 assert_contains "$PHPINFO_BODY" 'memory_limit'
 assert_contains "$PHPINFO_BODY" '128M'
 
+OVERVIEW="$WORK_ROOT/overview.html"
+assert_http '200' 'text/html; charset=UTF-8' "$BASE_PATH/" "$OVERVIEW"
+OVERVIEW_BODY="$(<"$OVERVIEW")"
+assert_contains "$OVERVIEW_BODY" '<title>Overview</title>'
+assert_contains "$OVERVIEW_BODY" 'class="picture-grid"'
+assert_contains "$OVERVIEW_BODY" "href=\"$BASE_PATH/picture/2\""
+assert_contains "$OVERVIEW_BODY" "src=\"$BASE_PATH/media/2\""
+assert_contains "$OVERVIEW_BODY" 'aria-label="Picture navigation"'
+
 PAGE="$WORK_ROOT/picture-2.html"
 assert_http '200' 'text/html; charset=UTF-8' "$BASE_PATH/picture/2" "$PAGE"
 PAGE_BODY="$(<"$PAGE")"
 assert_contains "$PAGE_BODY" 'Picture 2'
+assert_contains "$PAGE_BODY" "<a href=\"$BASE_PATH/\">Overview</a>"
 assert_contains "$PAGE_BODY" 'src="/hed/media/2"'
+assert_contains "$PAGE_BODY" 'data-picture-open'
+assert_contains "$PAGE_BODY" 'data-picture-lightbox'
+assert_contains "$PAGE_BODY" 'data-picture-close'
+assert_contains "$PAGE_BODY" '>X</button>'
 assert_contains "$PAGE_BODY" 'loading="lazy"'
 assert_contains "$PAGE_BODY" 'decoding="async"'
 assert_contains "$PAGE_BODY" 'href="/hed/assets/picture-browser.css"'
@@ -435,12 +449,12 @@ assert_http '200' 'text/css' "$BASE_PATH/assets/picture-browser.css" "$CSS_RESPO
 JS_RESPONSE="$WORK_ROOT/picture-browser.js"
 assert_http '200' 'text/javascript' "$BASE_PATH/assets/picture-browser.js" "$JS_RESPONSE"
 JS_BODY="$(<"$JS_RESPONSE")"
-assert_contains "$JS_BODY" 'const MIN_ZOOM = 0.5;'
-assert_contains "$JS_BODY" 'const MAX_ZOOM = 3.0;'
-assert_contains "$JS_BODY" 'const ZOOM_STEP = 0.25;'
-assert_contains "$JS_BODY" 'const DEFAULT_ZOOM = 1.0;'
-assert_contains "$JS_BODY" 'Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))'
-assert_contains "$JS_BODY" 'zoom + change'
+assert_contains "$JS_BODY" '[data-picture-open]'
+assert_contains "$JS_BODY" '[data-picture-lightbox]'
+assert_contains "$JS_BODY" '[data-picture-close]'
+assert_contains "$JS_BODY" "event.key === 'Escape'"
+assert_not_contains "$JS_BODY" 'MIN_ZOOM'
+assert_not_contains "$JS_BODY" 'data-zoom-action'
 
 for not_found_path in \
     "$BASE_PATH/picture/missing" \

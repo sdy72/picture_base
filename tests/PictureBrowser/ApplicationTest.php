@@ -50,13 +50,18 @@ final class ApplicationTest extends TestCase
         self::assertStringNotContainsString('<script title="quoted">', $response->body);
     }
 
-    public function testHomeRouteRendersTheFirstPicture(): void
+    public function testHomeRouteRendersOverviewThumbnails(): void
     {
         $response = $this->application->handle(new Request('GET', '/'));
 
         self::assertSame(200, $response->statusCode);
-        self::assertStringContainsString('Picture safe_1', $response->body);
+        self::assertStringContainsString('<title>Overview</title>', $response->body);
+        self::assertStringContainsString('<h1 id="overview-title">Overview</h1>', $response->body);
+        self::assertStringContainsString('class="picture-grid"', $response->body);
+        self::assertStringContainsString('href="/picture/safe_1"', $response->body);
         self::assertStringContainsString('src="/media/safe_1"', $response->body);
+        self::assertStringContainsString('aria-label="Picture navigation"', $response->body);
+        self::assertStringNotContainsString('data-picture-open', $response->body);
     }
 
     public function testSubfolderRouteUsesBasePathForApplicationUrls(): void
@@ -74,6 +79,7 @@ final class ApplicationTest extends TestCase
         $home = $this->application->handle(new Request('GET', '/subfolder/', '/subfolder'));
         self::assertSame(200, $home->statusCode);
         self::assertStringContainsString('src="/subfolder/media/safe_1"', $home->body);
+        self::assertStringContainsString('href="/subfolder/picture/safe_1"', $home->body);
 
         $media = $this->application->handle(new Request('GET', '/subfolder/media/safe_1', '/subfolder'));
         self::assertSame(200, $media->statusCode);
@@ -100,8 +106,15 @@ final class ApplicationTest extends TestCase
             '<img class="picture-image" data-picture-image src="/media/2"',
             $response->body,
         );
+        self::assertStringContainsString('<a href="/">Overview</a>', $response->body);
+        self::assertStringContainsString('aria-current="page">2</span>', $response->body);
+        self::assertStringContainsString('data-picture-open', $response->body);
+        self::assertStringContainsString('data-picture-lightbox', $response->body);
+        self::assertStringContainsString('data-picture-close', $response->body);
+        self::assertStringContainsString('>X</button>', $response->body);
         self::assertStringContainsString('loading="lazy"', $response->body);
-        self::assertStringContainsString('data-zoom-level="1.0"', $response->body);
+        self::assertStringNotContainsString('zoom-controls', $response->body);
+        self::assertStringNotContainsString('data-zoom-', $response->body);
         self::assertStringNotContainsString('<form', $response->body);
         self::assertStringNotContainsString('upload', $response->body);
         self::assertStringNotContainsString('search', $response->body);
@@ -123,17 +136,18 @@ final class ApplicationTest extends TestCase
         self::assertStringContainsString('aria-current="page"', $response->body);
     }
 
-    public function testBrowserZoomAssetDeclaresBoundedSteppedZoom(): void
+    public function testBrowserAssetDeclaresFullscreenBehavior(): void
     {
         $asset = file_get_contents(dirname(__DIR__, 2) . '/subfolder/assets/picture-browser.js');
 
         self::assertNotFalse($asset);
-        self::assertStringContainsString('const MIN_ZOOM = 0.5;', $asset);
-        self::assertStringContainsString('const MAX_ZOOM = 3.0;', $asset);
-        self::assertStringContainsString('const ZOOM_STEP = 0.25;', $asset);
-        self::assertStringContainsString('const DEFAULT_ZOOM = 1.0;', $asset);
-        self::assertStringContainsString('Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))', $asset);
-        self::assertStringContainsString('zoom + change', $asset);
+        self::assertStringContainsString('[data-picture-open]', $asset);
+        self::assertStringContainsString('[data-picture-lightbox]', $asset);
+        self::assertStringContainsString('[data-picture-close]', $asset);
+        self::assertStringContainsString("event.key === 'Escape'", $asset);
+        self::assertStringContainsString('previouslyFocusedElement.focus()', $asset);
+        self::assertStringNotContainsString('MIN_ZOOM', $asset);
+        self::assertStringNotContainsString('data-zoom-action', $asset);
     }
 
     public function testPngMediaRouteReturnsOriginalBytesAndMimeType(): void

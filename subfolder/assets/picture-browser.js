@@ -1,43 +1,48 @@
 (function () {
     'use strict';
 
-    const MIN_ZOOM = 0.5;
-    const MAX_ZOOM = 3.0;
-    const ZOOM_STEP = 0.25;
-    const DEFAULT_ZOOM = 1.0;
-    const image = document.querySelector('[data-picture-image]');
-    const output = document.querySelector('[data-zoom-level]');
-    const buttons = document.querySelectorAll('[data-zoom-action]');
+    const openButton = document.querySelector('[data-picture-open]');
+    const lightbox = document.querySelector('[data-picture-lightbox]');
+    const closeButton = document.querySelector('[data-picture-close]');
 
-    if (!image || !output) {
+    if (!openButton || !lightbox || !closeButton) {
         return;
     }
 
-    let zoom = DEFAULT_ZOOM;
+    let previouslyFocusedElement = null;
 
-    function clampZoom(value) {
-        return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+    function closeLightbox() {
+        lightbox.hidden = true;
+        openButton.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('picture-lightbox-open');
+
+        if (previouslyFocusedElement instanceof HTMLElement) {
+            previouslyFocusedElement.focus();
+        }
+
+        previouslyFocusedElement = null;
     }
 
-    function updateZoom() {
-        image.style.setProperty('--picture-zoom', String(zoom));
-        output.textContent = zoom.toFixed(2) + '×';
-
-        buttons.forEach(function (button) {
-            const action = button.getAttribute('data-zoom-action');
-            button.disabled = (action === 'decrease' && zoom <= MIN_ZOOM)
-                || (action === 'increase' && zoom >= MAX_ZOOM);
-        });
+    function openLightbox() {
+        previouslyFocusedElement = document.activeElement;
+        lightbox.hidden = false;
+        openButton.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('picture-lightbox-open');
+        closeButton.focus();
     }
 
-    buttons.forEach(function (button) {
-        button.addEventListener('click', function () {
-            const action = button.getAttribute('data-zoom-action');
-            const change = action === 'increase' ? ZOOM_STEP : -ZOOM_STEP;
-            zoom = clampZoom(zoom + change);
-            updateZoom();
-        });
+    openButton.addEventListener('click', openLightbox);
+    closeButton.addEventListener('click', closeLightbox);
+
+    lightbox.addEventListener('click', function (event) {
+        if (event.target === lightbox) {
+            closeLightbox();
+        }
     });
 
-    updateZoom();
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !lightbox.hidden) {
+            closeLightbox();
+        }
+    });
 }());

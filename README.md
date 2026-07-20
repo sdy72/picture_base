@@ -61,7 +61,7 @@ port.
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8080/hed/` to view the first picture, or use
+Open `http://127.0.0.1:8080/hed/` to view the picture overview, or use
 `http://127.0.0.1:8080/hed/picture/example` for the bundled fixture. Use
 `http://127.0.0.1:8080/phpinfo.php` to inspect the local PHP runtime. For an
 explicit picture root, run Compose with an override such as
