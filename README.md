@@ -11,16 +11,18 @@ It does not depend on files outside the folder, and its links detect the
 installed URL base at runtime.
 
 To deploy the package over SFTP, fill in the local, git-ignored `.env` file and
-run:
+install `lftp` and run:
 
 ```sh
 ./deploy.sh
 ```
 
-`SFTP_REMOTE_PATH` must be an existing directory. The script uploads the
-contents of `subfolder/`, including `.htaccess`, into that directory. The SFTP
-client prompts for the account password when key authentication does not
-succeed.
+`SFTP_REMOTE_PATH` must be an existing directory dedicated to this package.
+The script reconciles that directory with the contents of `subfolder/`,
+including `.htaccess`: files and directories that exist remotely but not
+locally are deleted. The SFTP client prompts for the account password when key
+authentication does not succeed. Do not point `SFTP_REMOTE_PATH` at a home or
+shared directory.
 
 Composer is local development tooling only. Install the root development
 dependencies from the repository root:
